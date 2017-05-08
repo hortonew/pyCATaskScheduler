@@ -28,7 +28,7 @@ If task planned start is 0800, current time is 0701, run
 MINUTES_BEFORE_SCHEDULING = 60
 
 # Change to True when ready for real run
-PRODUCTION = False
+PRODUCTION = True
 
 
 def identify_robot_details(robot):
@@ -131,7 +131,9 @@ def should_schedule_maintenance(t):
     """Return true if within range to start."""
     try:
         dt = parser.parse(t["Planned Start Date"])
-        minutes_until_change = (dt - datetime.now()).seconds / 60
+        change = convert_datetime_to_epoch(dt)
+        now = convert_datetime_to_epoch(datetime.now().replace(second=0,microsecond=0))
+        minutes_until_change = (change - now)/60
         if (minutes_until_change < MINUTES_BEFORE_SCHEDULING):
             print str(minutes_until_change) + " minutes until change.  \
                 Scheduling..."
@@ -145,20 +147,21 @@ def should_schedule_maintenance(t):
 
 def process_ticket(ticket):
     """Process a single ticket, scheduling its maintenance period."""
+    t = ticket
     status = {
         0: "Success",
         1: "Failure"
     }
     if PRODUCTION:
-        t = py_ca_servicedesk.get_ticket_information(ticket)
+        #t = py_ca_servicedesk.get_ticket_information(ticket)
         if should_schedule_maintenance(t):
             s = py_ca_servicedesk.get_config_items_associated_with_ticket(t)
             return_code = schedule_maintenance_mode(t, s)
-            print "PRODUCTION: " + ticket + " - " + status[return_code]
+            print "PRODUCTION: " + t["id"] + " - " + status[return_code]
         else:
-            print "PRODUCTION: " + ticket + " - " + status[1]
+            print "PRODUCTION: " + t["id"] + " - " + status[1]
     else:
-        print "DEVELOPMENT: " + ticket + " - " + status[0]
+        print "DEVELOPMENT: " + t["id"] + " - " + status[0]
 
 
 def process_all_tickets():
@@ -168,5 +171,14 @@ def process_all_tickets():
         process_ticket(ticket)
 
 
+def process_all_disable_tickets():
+    """Process all disable tickets, scheduling their maintenance period."""
+    tickets = py_ca_servicedesk.get_current_task_tickets()
+    for t in tickets:
+        if (tickets[t]["Class"]=="Monitoring" and tickets[t]["Category"]=="Disable" and tickets[t]["id"]=="500-326101"):
+            process_ticket(tickets[t])
+
+
 if __name__ == "__main__":
-    process_all_tickets()
+    py_ca_servicedesk.refresh_cache()
+    process_all_disable_tickets()
