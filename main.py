@@ -1,3 +1,4 @@
+#!/usr/bin/python
 """.
 
 Automation: Monitoring Disable
@@ -12,11 +13,14 @@ Description:
     1. Finds all tickets for team
     2. Any tasks the are scheduled in the next 60m; schedule maintenance
 """
+import os
 from patterns import PATTERN_CUSTOMER_ROBOT, PATTERN_CUSTOMER_HUB, PATTERN_SITE
 from pyCAServiceDesk import main as py_ca_servicedesk
 from pyCAUIM import main as py_cauim
 from dateutil import parser
 from datetime import datetime
+import logging
+from logging.config import dictConfig
 
 """
 Minutes it'll wait before scheduling a task's disable
@@ -29,7 +33,30 @@ MINUTES_BEFORE_SCHEDULING = 60
 
 # Change to True when ready for real run
 PRODUCTION = True
+LOGLEVEL = logging.DEBUG
 
+CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
+LOGFILE = "pyCATaskScheduler.log"
+LOGPATH = os.path.join(CURRENT_DIR, "logs", LOGFILE)
+
+# Log config
+logging_config = {
+    "version": 1,
+    "formatters": {
+        'f': {'format': '%(asctime)s level=%(levelname)s %(message)s'}
+    },
+    "handlers": {
+        'h': {
+            'class': 'logging.handlers.RotatingFileHandler', 
+            'filename': LOGPATH, 
+            'maxBytes': (1024 * 1024) * 2,
+            'backupCount': 2,
+            'formatter': 'f', 
+            'level': LOGLEVEL}
+    },
+    "root": {'handlers': ['h'], 'level': LOGLEVEL}
+}
+logging.config.dictConfig(logging_config)
 
 def identify_robot_details(robot):
     """Match company specific info to robot."""
@@ -121,9 +148,12 @@ def schedule_maintenance_mode(ticket, server_list):
             server, hub, start_time_epoch, end_time_epoch
         )
         print "Maintenance on " + server + " is " + str(rc)
-        print current_time + " server=" + server + ", start_time=" \
-            + start_time + ", end_time=" + end_time + ", start_time_epoch=" \
-            + str(start_time_epoch) + ", end_time_epoch=" + str(end_time_epoch)
+        log = "id={0}, server={1}, start_time={2}, end_time={3}, start_time_epoch={4}, end_time_epoch={5}"\
+                .format(ticket["id"], server, start_time, end_time, start_time_epoch, end_time_epoch)
+        if (str(rc)=="<Response [200]>"):
+            logging.info(log)
+        else:
+            logging.error(log)
     return 0
 
 
@@ -137,11 +167,20 @@ def should_schedule_maintenance(t):
         if (minutes_until_change < MINUTES_BEFORE_SCHEDULING):
             print str(minutes_until_change) + " minutes until change.  \
                 Scheduling..."
+            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, should_schedule=true"\
+                .format(t["id"], t["Planned Start Date"], minutes_until_change)
+            logging.debug(log)
             return True
         else:
             print str(minutes_until_change) + " minutes until change. "
+            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, should_schedule=false"\
+                .format(t["id"], t["Planned Start Date"], minutes_until_change)
+            logging.debug(log)
+            return False
     except:
-        print "No planned start time: " + t["id"]
+        print "No planned start/end time: " + t["id"]
+        log = "id={0},should_schedule=false,has_start_end_times=false".format(t["id"])
+        logging.error(log)
         return False
 
 
@@ -150,7 +189,8 @@ def process_ticket(ticket):
     t = ticket
     status = {
         0: "Success",
-        1: "Failure"
+        1: "Failure",
+        2: "Not ready to be scheduled"
     }
     if PRODUCTION:
         #t = py_ca_servicedesk.get_ticket_information(ticket)
@@ -159,7 +199,7 @@ def process_ticket(ticket):
             return_code = schedule_maintenance_mode(t, s)
             print "PRODUCTION: " + t["id"] + " - " + status[return_code]
         else:
-            print "PRODUCTION: " + t["id"] + " - " + status[1]
+            print "PRODUCTION: " + t["id"] + " - " + status[2]
     else:
         print "DEVELOPMENT: " + t["id"] + " - " + status[0]
 
@@ -180,5 +220,8 @@ def process_all_disable_tickets():
 
 
 if __name__ == "__main__":
+    logging.debug("status=starting")
     py_ca_servicedesk.refresh_cache()
     process_all_disable_tickets()
+    logging.debug("status=ending")
+
