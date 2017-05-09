@@ -1,6 +1,8 @@
 [submodule "pyCAUIM"]
 	path = pyCAUIM
 	url = git@github.com:hortonew/pyCAUIM.git
+        ignore = all
 [submodule "pyCAServiceDesk"]
 	path = pyCAServiceDesk
 	url = git@github.com:hortonew/pyCAServiceDesk.git
+        ignore = all
