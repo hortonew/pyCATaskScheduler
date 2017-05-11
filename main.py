@@ -17,6 +17,7 @@ import os
 from patterns import PATTERN_CUSTOMER_ROBOT, PATTERN_CUSTOMER_HUB, PATTERN_SITE
 from pyCAServiceDesk import main as py_ca_servicedesk
 from pyCAUIM import main as py_cauim
+from globalvars import AUTOMATION_CONTACT_ID, AUTOMATION_GROUP_ID
 from dateutil import parser
 from datetime import datetime
 import logging
@@ -114,6 +115,24 @@ def identify_hub(robots):
     return robots_and_hubs
 
 
+def take_ownership_of_ticket(ticket_id):
+    """Assign ticket to automation user."""
+    data_dict = {
+        "assigned_contact_id": AUTOMATION_CONTACT_ID,
+        "assigned_group_id": AUTOMATION_GROUP_ID
+    }
+    status = {
+        0: True,
+        1: False
+    }
+    t = ticket_id
+    row_id = "-999"
+    # Use -999 as row_id in order to bypass the need to look it up
+    response = py_ca_servicedesk.update_task_ticket(t, row_id, data_dict)
+    # Return true or false depending on if ticket was successfully updated
+    return status[response]
+
+
 def convert_datetime_to_epoch(dt):
     """Convert datetime format to epoch."""
     import time
@@ -148,8 +167,13 @@ def schedule_maintenance_mode(ticket, server_list):
             server, hub, start_time_epoch, end_time_epoch
         )
         print "Maintenance on " + server + " is " + str(rc)
-        log = "id={0}, server={1}, start_time={2}, end_time={3}, start_time_epoch={4}, end_time_epoch={5}"\
-                .format(ticket["id"], server, start_time, end_time, start_time_epoch, end_time_epoch)
+        log = "id={0}, server={1}, start_time={2}, end_time={3}, \
+            start_time_epoch={4}, end_time_epoch={5}".format(
+                ticket["id"],
+                server, start_time,
+                end_time,
+                start_time_epoch,
+                end_time_epoch)
         if (str(rc)=="<Response [200]>"):
             logging.info(log)
         else:
@@ -162,24 +186,32 @@ def should_schedule_maintenance(t):
     try:
         dt = parser.parse(t["Planned Start Date"])
         change = convert_datetime_to_epoch(dt)
-        now = convert_datetime_to_epoch(datetime.now().replace(second=0,microsecond=0))
+        ts = datetime.now().replace(second=0,microsecond=0)
+        now = convert_datetime_to_epoch(ts)
         minutes_until_change = (change - now)/60
         if (minutes_until_change < MINUTES_BEFORE_SCHEDULING):
             print str(minutes_until_change) + " minutes until change.  \
                 Scheduling..."
-            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, should_schedule=true"\
-                .format(t["id"], t["Planned Start Date"], minutes_until_change)
+            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, \
+                should_schedule=true".format(
+                    t["id"],
+                    t["Planned Start Date"],
+                    minutes_until_change)
             logging.debug(log)
             return True
         else:
             print str(minutes_until_change) + " minutes until change. "
-            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, should_schedule=false"\
-                .format(t["id"], t["Planned Start Date"], minutes_until_change)
+            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, \
+                should_schedule=false".format(
+                    t["id"],
+                    t["Planned Start Date"],
+                    minutes_until_change)
             logging.debug(log)
             return False
     except:
         print "No planned start/end time: " + t["id"]
-        log = "id={0},should_schedule=false,has_start_end_times=false".format(t["id"])
+        log = "id={0},should_schedule=false,has_start_end_times=false".format(
+            t["id"])
         logging.error(log)
         return False
 
@@ -193,15 +225,19 @@ def process_ticket(ticket):
         2: "Not ready to be scheduled"
     }
     if PRODUCTION:
-        #t = py_ca_servicedesk.get_ticket_information(ticket)
         if should_schedule_maintenance(t):
+            # Try to take ownership of ticket
+            ownership_taken = take_ownership_of_ticket(t["id"])
+            # Pull back all hostnames associated as CIs with the ticket
             s = py_ca_servicedesk.get_config_items_associated_with_ticket(t)
+            # Schedule maintenance mode via CA UIM REST API
             return_code = schedule_maintenance_mode(t, s)
             print "PRODUCTION: " + t["id"] + " - " + status[return_code]
         else:
             print "PRODUCTION: " + t["id"] + " - " + status[2]
     else:
-        print "DEVELOPMENT: " + t["id"] + " - " + status[0]
+        if should_schedule_maintenance(t):
+            print "DEVELOPMENT: " + t["id"] + " - " + status[0]
 
 
 def process_all_tickets():
@@ -213,10 +249,19 @@ def process_all_tickets():
 
 def process_all_disable_tickets():
     """Process all disable tickets, scheduling their maintenance period."""
-    tickets = py_ca_servicedesk.get_current_task_tickets()
-    for t in tickets:
-        if (tickets[t]["Class"]=="Monitoring" and tickets[t]["Category"]=="Disable" and tickets[t]["id"]=="500-326101"):
-            process_ticket(tickets[t])
+    ds, tickets = py_ca_servicedesk.get_tickets_from_disk()
+    if ds:
+        for t in tickets:
+            try:
+                if (tickets[t]["Class"]=="Monitoring" \
+                    and tickets[t]["Category"]=="Disable" \
+                    and tickets[t]["id"]=="500-326101"):
+                    process_ticket(tickets[t])
+            except:
+                print "Failed to get info for ticket: {0}.  \
+                    Will retry at next run.".format(tickets[t]["id"])
+    else:
+        print "Tickets missing from disk.  This should be updated next run."
 
 
 if __name__ == "__main__":

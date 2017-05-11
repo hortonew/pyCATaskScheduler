@@ -1,4 +1,6 @@
 *.pyc
 *.dat
 patterns.py
+globalvars.py
+tests.py
 logs/
