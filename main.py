@@ -33,7 +33,7 @@ If task planned start is 0800, current time is 0701, run
 MINUTES_BEFORE_SCHEDULING = 60
 
 # Change to True when ready for real run
-PRODUCTION = True
+PRODUCTION = False
 LOGLEVEL = logging.DEBUG
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -148,7 +148,7 @@ def schedule_maintenance_mode(ticket, server_list):
     """
     # Make the list lowercase
     server_list = [x.lower() for x in server_list]
-    rh = identify_hub(server_list)
+    # rh = identify_hub(server_list)
 
     try:
         start_time = ticket["Planned Start Date"]
@@ -160,6 +160,9 @@ def schedule_maintenance_mode(ticket, server_list):
     except:
         print "Problem getting start/end times.  Inform ticket creator."
         return 1
+
+    py_cauim.maintenance_mode_task(ticket["id"], server_list, start_time_epoch, end_time_epoch)
+    """
     for server in server_list:
         current_time = str(datetime.now())
         hub = rh[server]["hubname"]
@@ -178,6 +181,7 @@ def schedule_maintenance_mode(ticket, server_list):
             logging.info(log)
         else:
             logging.error(log)
+    """
     return 0
 
 
@@ -190,8 +194,8 @@ def should_schedule_maintenance(t):
         now = convert_datetime_to_epoch(ts)
         minutes_until_change = (change - now)/60
         if (minutes_until_change < MINUTES_BEFORE_SCHEDULING):
-            print str(minutes_until_change) + " minutes until change.  \
-                Scheduling..."
+            print str(minutes_until_change) + " minutes until change "  \
+                + t["id"] + ".  Scheduling..."
             log = "id={0}, planned_start_date={1}, minutes_until_change={2}, \
                 should_schedule=true".format(
                     t["id"],
@@ -200,7 +204,7 @@ def should_schedule_maintenance(t):
             logging.debug(log)
             return True
         else:
-            print str(minutes_until_change) + " minutes until change. "
+            print str(minutes_until_change) + " minutes until change " + t["id"] + "."
             log = "id={0}, planned_start_date={1}, minutes_until_change={2}, \
                 should_schedule=false".format(
                     t["id"],
@@ -255,7 +259,7 @@ def process_all_disable_tickets():
             try:
                 if (tickets[t]["Class"]=="Monitoring" \
                     and tickets[t]["Category"]=="Disable" \
-                    and tickets[t]["id"]=="500-326101"):
+                    and tickets[t]["Type"]=="Scheduled"):
                     process_ticket(tickets[t])
             except:
                 print "Failed to get info for ticket: {0}.  \
