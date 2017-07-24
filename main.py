@@ -160,13 +160,10 @@ def convert_datetime_to_epoch(dt):
 
 def schedule_maintenance_mode(ticket, server_list):
     """
-    Schedule maintenance mode in CA UIM.
-
-    Status: Development
+    Schedule maintenance mode in CA UIM: UMP.
     """
     # Make the list lowercase
     server_list = [x.lower() for x in server_list]
-    # rh = identify_hub(server_list)
 
     try:
         start_time = ticket["Planned Start Date"]
@@ -175,33 +172,11 @@ def schedule_maintenance_mode(ticket, server_list):
         dt_end = parser.parse(end_time)
         start_time_epoch = convert_datetime_to_epoch(dt_start)
         end_time_epoch = convert_datetime_to_epoch(dt_end)
+        py_cauim.maintenance_mode_task(ticket["id"], server_list, start_time_epoch, end_time_epoch)
+        return 0
     except:
         print "Problem getting start/end times.  Inform ticket creator."
         return 1
-
-    py_cauim.maintenance_mode_task(ticket["id"], server_list, start_time_epoch, end_time_epoch)
-    """
-    for server in server_list:
-        current_time = str(datetime.now())
-        hub = rh[server]["hubname"]
-        rc = py_cauim.maintenance_mode(
-            server, hub, start_time_epoch, end_time_epoch
-        )
-        print "Maintenance on " + server + " is " + str(rc)
-        log = "id={0}, server={1}, start_time={2}, end_time={3}, \
-            start_time_epoch={4}, end_time_epoch={5}".format(
-                ticket["id"],
-                server, start_time,
-                end_time,
-                start_time_epoch,
-                end_time_epoch)
-        if (str(rc)=="<Response [200]>"):
-            logging.info(log)
-        else:
-            logging.error(log)
-    """
-    return 0
-
 
 def should_schedule_maintenance(t):
     """Return true if within range to start."""
@@ -212,26 +187,21 @@ def should_schedule_maintenance(t):
         now = convert_datetime_to_epoch(ts)
         minutes_until_change = (change - now)/60
         if (minutes_until_change < MINUTES_BEFORE_SCHEDULING):
-            print str(minutes_until_change) + " minutes until change "  \
-                + t["id"] + ".  Scheduling..."
-            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, \
-                should_schedule=true".format(
+            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, should_schedule=true".format(
                     t["id"],
                     t["Planned Start Date"],
                     minutes_until_change)
             logging.debug(log)
             return True
         else:
-            print str(minutes_until_change) + " minutes until change " + t["id"] + "."
-            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, \
-                should_schedule=false".format(
+            log = "id={0}, planned_start_date={1}, minutes_until_change={2}, should_schedule=false".format(
                     t["id"],
                     t["Planned Start Date"],
                     minutes_until_change)
-            logging.debug(log)
+            logging.info(log)
             return False
     except:
-        print "No planned start/end time: " + t["id"]
+        # No planned start/end time
         log = "id={0},should_schedule=false,has_start_end_times=false".format(
             t["id"])
         logging.error(log)
@@ -256,15 +226,19 @@ def process_ticket(ticket):
             return_code = schedule_maintenance_mode(t, s)
             if status[return_code] == "Success":
                 ticket_closed = close_task_ticket(t["id"])
+                log = "id={0}, status={1}".format(t["id"], "Ticket Closed")
+                logging.info(log)
                 py_ca_servicedesk.update_cache_for_ticket(t)
-                print("Updated local ticket cache")
+                log = "id={0}, status={1}".format(t["id"], "Update local cache")
+                logging.debug(log)
                 if ticket_closed:
                     print("Ticket successfully closed.")
                 else:
                     print("Error closing ticket.")
             print "PRODUCTION: " + t["id"] + " - " + status[return_code]
         else:
-            print "PRODUCTION: " + t["id"] + " - " + status[2]
+            log = "id={0}, status={1}".format(t["id"], status[2])
+            logging.debug(log)
     else:
         if should_schedule_maintenance(t):
             print "DEVELOPMENT: " + t["id"] + " - " + status[0]
@@ -288,7 +262,7 @@ def process_all_disable_tickets():
                     and tickets[t]["Type"]=="Scheduled" \
                     and (tickets[t]["Status"]=="Active" \
                     or tickets[t]["Status"]=="Queued" \
-                    or tickets[t]["Status"]=="New"):
+                    or tickets[t]["Status"]=="New")):
                     process_ticket(tickets[t])
             except:
                 print "Failed to get info for ticket: {0}.  \
