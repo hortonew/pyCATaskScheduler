@@ -59,20 +59,20 @@ logging_config = {
 }
 logging.config.dictConfig(logging_config)
 
-def send_email(fromaddr, toaddr, subject, body):
+def send_email(fromaddr, toaddrlist, subject, body):
     """Send email."""
     import smtplib
     from email.MIMEMultipart import MIMEMultipart
     from email.MIMEText import MIMEText
     msg = MIMEMultipart()
     msg["From"] = fromaddr
-    msg["To"] = toaddr
+    msg["To"] = ", ".join(toaddrlist)
     msg["Subject"] = subject
     msg.attach(MIMEText(body, 'plain'))
-    server = smtplib.SMTP(MAILRELAY, MAILRELAYPORT)
+    server = smtplib.SMTP("mailrelay.corp.trizetto.com", "25")
     server.starttls()
     text = msg.as_string()
-    server.sendmail(fromaddr, toaddr, text)
+    server.sendmail(fromaddr, toaddrlist, text)
     server.quit()
 
 def identify_robot_details(robot):
