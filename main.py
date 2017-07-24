@@ -33,7 +33,7 @@ If task planned start is 0800, current time is 0701, run
 MINUTES_BEFORE_SCHEDULING = 60
 
 # Change to True when ready for real run
-PRODUCTION = False
+PRODUCTION = True
 LOGLEVEL = logging.DEBUG
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -131,6 +131,24 @@ def take_ownership_of_ticket(ticket_id):
     response = py_ca_servicedesk.update_task_ticket(t, row_id, data_dict)
     # Return true or false depending on if ticket was successfully updated
     return status[response]
+
+def close_task_ticket(ticket_id):
+    """Close task ticket."""
+    data_dict = {
+        "work_description": "Automation Completed Request.  Closing Ticket.",
+        "ticket_status": "Closed"
+    }
+    status = {
+        0: True,
+        1: False
+    }
+    try:
+        ticket_info = py_ca_servicedesk.get_task_ticket_info(ticket_id)
+        row_id = ticket_info["Row ID"]
+        response = py_ca_servicedesk.update_task_ticket(ticket_id, row_id, data_dict)
+        return status[response]
+    except:
+        return False
 
 
 def convert_datetime_to_epoch(dt):
@@ -236,6 +254,14 @@ def process_ticket(ticket):
             s = py_ca_servicedesk.get_config_items_associated_with_ticket(t)
             # Schedule maintenance mode via CA UIM REST API
             return_code = schedule_maintenance_mode(t, s)
+            if status[return_code] == "Success":
+                ticket_closed = close_task_ticket(t["id"])
+                py_ca_servicedesk.update_cache_for_ticket(t)
+                print("Updated local ticket cache")
+                if ticket_closed:
+                    print("Ticket successfully closed.")
+                else:
+                    print("Error closing ticket.")
             print "PRODUCTION: " + t["id"] + " - " + status[return_code]
         else:
             print "PRODUCTION: " + t["id"] + " - " + status[2]
@@ -259,7 +285,10 @@ def process_all_disable_tickets():
             try:
                 if (tickets[t]["Class"]=="Monitoring" \
                     and tickets[t]["Category"]=="Disable" \
-                    and tickets[t]["Type"]=="Scheduled"):
+                    and tickets[t]["Type"]=="Scheduled" \
+                    and (tickets[t]["Status"]=="Active" \
+                    or tickets[t]["Status"]=="Queued" \
+                    or tickets[t]["Status"]=="New"):
                     process_ticket(tickets[t])
             except:
                 print "Failed to get info for ticket: {0}.  \
