@@ -17,7 +17,7 @@ import os
 from patterns import PATTERN_CUSTOMER_ROBOT, PATTERN_CUSTOMER_HUB, PATTERN_SITE
 from pyCAServiceDesk import main as py_ca_servicedesk
 from pyCAUIM import main as py_cauim
-from globalvars import AUTOMATION_CONTACT_ID, AUTOMATION_GROUP_ID
+from globalvars import AUTOMATION_CONTACT_ID, AUTOMATION_GROUP_ID, MAILRELAY, MAILRELAYPORT
 from dateutil import parser
 from datetime import datetime
 import logging
@@ -58,6 +58,22 @@ logging_config = {
     "root": {'handlers': ['h'], 'level': LOGLEVEL}
 }
 logging.config.dictConfig(logging_config)
+
+def send_email(fromaddr, toaddr, subject, body):
+    """Send email."""
+    import smtplib
+    from email.MIMEMultipart import MIMEMultipart
+    from email.MIMEText import MIMEText
+    msg = MIMEMultipart()
+    msg["From"] = fromaddr
+    msg["To"] = toaddr
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, 'plain'))
+    server = smtplib.SMTP(MAILRELAY, MAILRELAYPORT)
+    server.starttls()
+    text = msg.as_string()
+    server.sendmail(fromaddr, toaddr, text)
+    server.quit()
 
 def identify_robot_details(robot):
     """Match company specific info to robot."""
