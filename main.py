@@ -188,6 +188,15 @@ def schedule_maintenance_mode(ticket, server_list):
         dt_end = parser.parse(end_time)
         start_time_epoch = convert_datetime_to_epoch(dt_start)
         end_time_epoch = convert_datetime_to_epoch(dt_end)
+        ts = datetime.now().replace(second=0,microsecond=0)
+        now = convert_datetime_to_epoch(ts)
+        # If start time has passed, make the start time 1 minute into the future.  
+        # Otherwise, call fails silently.
+        if (start_time_epoch - now)/60 < 1:
+            log="id={0}, status={1}".format(ticket["id"], "Changing start time to 1 min from now."
+            logging.debug(log)
+            start_time_epoch = start_time_epoch + 60
+        # Build the maintenance period
         py_cauim.maintenance_mode_task(ticket["id"], server_list, start_time_epoch, end_time_epoch)
         return 0
     except:
